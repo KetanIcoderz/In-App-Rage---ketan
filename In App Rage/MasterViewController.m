@@ -13,6 +13,7 @@
 
 @interface MasterViewController () {
     NSArray *_products;
+    NSNumberFormatter * _priceFormatter;
 }
 @end
 
@@ -28,6 +29,30 @@
     [self.refreshControl addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
     [self reload];
     [self.refreshControl beginRefreshing];
+    
+    _priceFormatter = [[NSNumberFormatter alloc] init];
+    [_priceFormatter setFormatterBehavior:NSNumberFormatterBehavior10_4];
+    [_priceFormatter setNumberStyle:NSNumberFormatterCurrencyStyle];
+    
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(productPurchased:) name:IAPHelperProductPurchasedNotification object:nil];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)productPurchased:(NSNotification *)notification {
+    
+    NSString * productIdentifier = notification.object;
+    [_products enumerateObjectsUsingBlock:^(SKProduct * product, NSUInteger idx, BOOL *stop) {
+        if ([product.productIdentifier isEqualToString:productIdentifier]) {
+            [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:idx inSection:0]] withRowAnimation:UITableViewRowAnimationFade];
+            *stop = YES;
+        }
+    }];
     
 }
 
@@ -61,8 +86,33 @@
 
     SKProduct * product = (SKProduct *) _products[indexPath.row];
     cell.textLabel.text = product.localizedTitle;
+    [_priceFormatter setLocale:product.priceLocale];
+    cell.detailTextLabel.text = [_priceFormatter stringFromNumber:product.price];
+
+    if ([[RageIAPHelper sharedInstance] productPurchased:product.productIdentifier]) {
+        cell.accessoryType = UITableViewCellAccessoryCheckmark;
+        cell.accessoryView = nil;
+    } else {
+        UIButton *buyButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+        buyButton.frame = CGRectMake(0, 0, 72, 37);
+        [buyButton setTitle:@"Buy" forState:UIControlStateNormal];
+        buyButton.tag = indexPath.row;
+        [buyButton addTarget:self action:@selector(buyButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.accessoryView = buyButton;
+    }
     
     return cell;
+}
+
+- (void)buyButtonTapped:(id)sender {
+    
+    UIButton *buyButton = (UIButton *)sender;
+    SKProduct *product = _products[buyButton.tag];
+    
+    NSLog(@"Buying %@...", product.productIdentifier);
+    [[RageIAPHelper sharedInstance] buyProduct:product];
+
 }
 
 @end
